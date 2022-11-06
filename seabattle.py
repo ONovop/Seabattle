@@ -16,6 +16,11 @@ class Dot:
         if self.x == other.x and self.y == other.y:
             return True
 
+    @staticmethod
+    def get_key(a, value):
+        for i, j in a.items():
+            if j == value:
+                return i
 class Ship:
     _x = 0
     _y = 0
@@ -30,10 +35,10 @@ class Ship:
 
     @x.setter
     def x(self, value):
-        if isinstance(value, int) and 0 < value < len(board_u.field):
+        if isinstance(value, int) and 0 < value < play.size:
             self._x = value
         elif value in dict.values():
-            self._x = get_key(dict, value)
+            self._x = Dot.get_key(dict, value)
             if self._x == 0:
                 self._x = 10
         else:
@@ -45,7 +50,7 @@ class Ship:
 
     @y.setter
     def y(self, value):
-        if value in range(1, len(board_u.field)):
+        if value in range(1, play.size):
             self._y = value
         else:
             raise BoardOutException
@@ -65,21 +70,28 @@ class Ship:
         lst = []
         for i in range(0, self.length):
             if self.direction == 'h':
-                lst.append([self.x, self.y + i])
+                s_dot = Dot(self.x, self.y+i)
+                lst.append(s_dot)
             if self.direction == 'v':
-                lst.append([self.x + i, self.y])
+                s_dot = Dot(self.x+i, self.y)
+                lst.append(s_dot)
         return lst
+
+    def strike(self):
+        self.lives -= 1
+        if self.lives == 0:
+            return True
+        else:
+            return False
 
 class Board:
     def __init__(self):
-        self.field =[]
+        self.field = []
         self.ships = []
         self.lships = 0
 
     def clear(self):
-        self.field = []
-        self.ships = []
-        self.lships = 0
+        self.__init__()
 
     def create(self, size):
         for i in range(0, size):
@@ -94,10 +106,7 @@ class Board:
                         lst.append(j)
                 else:
                     if j == 0:
-                        if i == 10:
-                            lst.append(dict.get(0))
-                        else:
-                            lst.append(dict.get(i))
+                        lst.append(Dot.get_key(dict, i))
                     else:
                         lst.append(' ')
             self.field.append(lst)
@@ -112,32 +121,113 @@ class Board:
             for i in range(-1, 2):
                 for j in range(-1, 2):
                     try:
-                        if self.field[y[0]+i][y[1]+j] == ' ':
-                            self.field[y[0] + i][y[1] + j] = 'М'
+                        if self.field[y.x + i][y.y + j] == ' ':
+                            self.field[y.x + i][y.y + j] = 'М'
                         self.field[0][0] = ' '
                     except IndexError:
                         pass
 
     def add_ship(self, ship):
         dots = ship.dots()
-        if (dots[len(dots)-1][0] < 0 or
-            dots[len(dots)-1][0] > (len(self.field) - 1) or
-            (len(self.field) - 1) < dots[len(dots)-1][1] or
-            dots[len(dots)-1][1] < 0):
+        if (dots[len(dots)-1].x < 0 or
+            dots[len(dots)-1].x > (len(self.field) - 1) or
+            (len(self.field) - 1) < dots[len(dots)-1].y or
+            dots[len(dots)-1].y < 0):
             raise BoardOutException
         for i in dots:
-            if self.field[i[0]][i[1]] != ' ':
+            if self.field[i.x][i.y] != ' ':
                 raise BoardOutException
         for i in dots:
-            self.field[i[0]][i[1]] = 'Ц'
+            self.field[i.x][i.y] = 'Ц'
         self.contour(ship)
         self.ships.append(ship)
+
+    def partially(self, point):
+        self.field[point.x][point.y] = 'П'
+
+    def miss(self, point):
+        self.field[point.x][point.y] = 'М'
+
+    def sunk(self, point):
+        self.field[point.x][point.y] = 'У'
 
     def before(self):
         for i in range(1, len(self.field)):
             for j in range(1, len(self.field)):
                 if self.field[i][j] == 'М':
                     self.field[i][j] = ' '
+
+    def shot(self, point):
+        if self.field[point.x][point.y] == ' ':
+            self.miss(point)
+            return False
+        else:
+            for i in self.ships:
+                if point in i.dots():
+                    is_sunk = i.strike()
+                    if is_sunk:
+                        self.lships -= 1
+                        self.contour(i)
+                        for j in i.dots():
+                            self.sunk(j)
+                        return i
+                    else:
+                        self.partially(point)
+                        return point
+
+    def array_free(self):
+        free = []
+        for i in range(1, len(self.field)):
+            for j in range(1, len(self.field)):
+                point = Dot(i, j)
+                if self.field[point.x][point.y] == ' ':
+                    free.append(point)
+        return free
+
+    def search_and_destroy(self, max_len):
+        free = self.array_free()
+        choise = []
+        d_choise = []
+        for i in free:
+            count_h = 1
+            count_v = 1
+            try:
+                for j in range(-1, (-max_len), -1):
+                    if self.field[i.x + j][i.y] == ' ':
+                        count_h += 1
+                    else:
+                        break
+                for j in range(1, max_len):
+                    if self.field[i.x + j][i.y] == ' ':
+                        count_h += 1
+                    else:
+                        break
+            except IndexError:
+                pass
+            try:
+                for j in range(-1, (-max_len), -1):
+                    if self.field[i.x][i.y + j] == ' ':
+                        count_v += 1
+                    else:
+                        break
+                for j in range(1, max_len):
+                    if self.field[i.x][i.y + j] == ' ':
+                        count_v += 1
+                    else:
+                        break
+            except IndexError:
+                pass
+            if count_h >= max_len or count_v >= max_len:
+                choise.append(i)
+            if count_h >= max_len and count_v >= max_len:
+                d_choise.append(i)
+        if d_choise != []:
+            return d_choise
+        elif choise != []:
+            return choise
+        else:
+            return free
+
 
 class Player:
     def __init__(self, own_board, conter_board, counter_board_vis):
@@ -152,55 +242,42 @@ class Player:
         while True:
             try:
                 message = 'Введите координаты выстрела'
-                coords = self.ask(message=message, board=self.conter_board_vis)
-                if isinstance(coords[0], str):
+                shot = self.ask(message=message, board=self.conter_board_vis)
+                if isinstance(shot.x, str):
                     #print(f'Выстрел по координатам {coords}')
-                    coords[0] = get_key(dict, coords[0])
-                    if coords[0] == 0:
-                        coords[0] = 10
+                    shot.x = dict[shot.x]
+                    if shot.x == 0:
+                        shot.x = 10
                 else:
-                    coords_pr = coords.copy()
-                    if coords_pr[0] == 10:
-                        coords_pr[0] = 0
+                    coords_pr = [shot.x, shot.y]
+                    #if coords_pr[0] == 10:
+                    #    coords_pr[0] = 0
                     if coords_pr[1] == 10:
                         coords_pr[1] = 0
-                    coords_pr[0] = dict.get(coords_pr[0])
+                    coords_pr[0] = Dot.get_key(dict, coords_pr[0])
                     print(f'Выстрел по координатам {coords_pr}')
-                if self.conter_board_vis.field[coords[0]][coords[1]] != ' ':
+                if shot not in self.conter_board_vis.array_free():
                     raise BoardOutException
-                if self.conter_board.field[coords[0]][coords[1]] == ' ':
-                    self.conter_board.field[coords[0]][coords[1]] = 'М'
-                    self.conter_board_vis.field[coords[0]][coords[1]] = 'М'
-                    print('Мимо!')
-                    time.sleep(3)
-                    return False
-                else:
-                    shot = Dot(coords[0], coords[1])
-                    for i in self.conter_board.ships:
-                        dotlist = []
-                        for j in i.dots():
-                            shipdot = Dot(j[0], j[1])
-                            dotlist.append(shipdot)
-                        if shot in dotlist:
-                            i.lives -= 1
-                            if i.lives == 0:
-                                self.conter_board.lships -= 1
-                                self.conter_board_vis.contour(i)
-                                self.conter_board.contour(i)
-                                print(f'Утопил! Осталось {self.conter_board.lships} кораблей')
-                                time.sleep(3)
-                                for k in i.dots():
-                                    self.conter_board_vis.field[k[0]][k[1]] = 'У'
-                                    self.conter_board.field[k[0]][k[1]] = 'У'
-                            else:
-                                self.conter_board_vis.field[shot.x][shot.y] = 'П'
-                                self.conter_board.field[shot.x][shot.y] = 'П'
-                                print('Попал!')
-                                time.sleep(3)
+                check = self.conter_board.shot(shot)
+                if isinstance(check, Ship):
+                    print(f'Утопил! Осталось {self.conter_board.lships} кораблей')
+                    for i in check.dots():
+                        self.conter_board_vis.sunk(i)
+                    self.conter_board_vis.contour(check)
+                    time.sleep(1)
                     return True
+                elif isinstance(check, Dot):
+                    print('Попал!')
+                    self.conter_board_vis.partially(check)
+                    time.sleep(1)
+                    return True
+                else:
+                    print('Мимо!')
+                    self.conter_board_vis.miss(shot)
+                    time.sleep(1)
+                    return False
             except BoardOutException:
                 print('В эту клетку бессмысленно стрелять')
-
 
 class User(Player):
     def ship_set_up(self, size):
@@ -208,23 +285,20 @@ class User(Player):
             shiplist_u = shiplist_u_s
         else:
             shiplist_u = shiplist_u_l
-        success_out = False
-        while not success_out:
+        while True:
             try:
                 self.own_board.clear()
                 self.own_board.create(size)
                 self.own_board.output()
                 for i in shiplist_u:
-                    success = False
-                    while not success:
+                    while True:
                         try:
                             message = f'Введите координаты верхней левой точки корбля, размер {i.length} клетка(и)'
                             coords = self.ask(message=message)
-                            i.x = coords[0]
-                            i.y = coords[1]
+                            i.x = coords.x
+                            i.y = coords.y
                             if i.length > 1:
-                                success_in = False
-                                while not success_in:
+                                while True:
                                     try:
                                         drtn = input('Выберите направление корабля: h - горизонтально, v - вертикально')
                                         drtn.lower()
@@ -233,27 +307,23 @@ class User(Player):
                                     except BoardOutException:
                                         print('Допустимы только буквы h и v')
                                     else:
-                                        success_in = True
                                         i.direction = drtn
-                            board_u.add_ship(i)
-                            board_u.lships += 1
-                            board_u.output()
-                            count = 0
-                            for a in range(1, len(self.own_board.field)):
-                                for b in range(1 , len(self.own_board.field)):
-                                    if self.own_board.field[a][b] == ' ':
-                                        count += 1
+                                        break
+                            self.own_board.add_ship(i)
+                            self.own_board.lships += 1
+                            self.own_board.output()
+                            count = len(self.own_board.array_free())
                             if count == 0 and len(self.own_board.ships) != len(shiplist_u):
                                 raise FullBoard
                         except BoardOutException:
                             print('Здесь невозможно разместить корабль')
                         else:
-                            success = True
+                            break
             except FullBoard:
                 print('Нет места для оставшихся кораблей. Постарайтесь разместить некоторые '
                       'корабли компактнее')
             else:
-                success_out = True
+                break
 
     def ask(self, message='', board=None):
         coords = input(message)
@@ -267,11 +337,15 @@ class User(Player):
             col = int(coords[0])
         else:
             raise BoardOutException
-        if row not in dict.values():
+        if row not in dict.keys():
             raise BoardOutException
         if col == 0:
             col = 10
-        return [row, col]
+        row_n = dict[row]
+        if row_n == 0:
+            row_n = 10
+        reply = Dot(row_n, col)
+        return reply
 
 class AI(Player):
     def ship_set_up(self, size):
@@ -279,116 +353,80 @@ class AI(Player):
             shiplist_c = shiplist_c_s
         else:
             shiplist_c = shiplist_c_l
-        success = False
-        while not success:
+        while True:
             self.own_board.clear()
             self.own_board.create(size)
             try:
                 for i in shiplist_c:
-                    success_in = False
                     count = 0
-                    while not success_in:
+                    while True:
                         count += 1
                         if count == 5000:
                             raise BoardOutException
                         try:
-                            x, y = self.ask(board=self.own_board)
+                            edge = self.ask(board=self.own_board)
                             drtn = random.choice(['h', 'v'])
-                            i.x = x
-                            i.y = y
+                            i.x = edge.x
+                            i.y = edge.y
                             i.direction = drtn
                             self.own_board.add_ship(i)
                             self.own_board.lships += 1
                         except BoardOutException:
                             pass
                         else:
-                            success_in = True
+                            break
             except BoardOutException:
                 pass
             else:
-                success = True
+                break
 
     def ask(self, message='', board=None):
-        free = []
+        free = board.array_free()
         hit = []
         for i in range(1, len(board.field)):
             for j in range(1, len(board.field)):
-                if board.field[i][j] == ' ':
-                    free.append([i, j])
-                if board.field[i][j] == 'П':
-                    hit.append([i, j])
+                point = Dot(i, j)
+                if board.field[point.x][point.y] == 'П':
+                    hit.append(point)
         if len(free) == 0:
             raise BoardOutException
         if len(hit) == 1:
             for i in hit:
                 for j in [-1, 1]:
-                    if i[0] + j < len(board.field):
-                        if board.field[i[0]+j][i[1]] == ' ':
-                            return [i[0]+j, i[1]]
-                    if i[1] + j < len((board.field)):
-                        if board.field[i[0]][i[1]+j] == ' ':
-                            return [i[0], i[1]+j]
+                    if i.x + j < len(board.field):
+                        if board.field[i.x+j][i.y] == ' ':
+                            point = Dot(i.x + j, i.y)
+                            return point
+                    if i.y + j < len((board.field)):
+                        if board.field[i.x][i.y+j] == ' ':
+                            point = Dot(i.x, i.y + j)
+                            return point
         if len(hit) > 1:
-            if hit[0][0] == hit[1][0]:
-                if board.field[hit[0][0]][(hit[0][1]-1)] == ' ':
-                    return [hit[0][0], (hit[0][1]-1)]
+            if hit[0].x == hit[1].x:
+                if board.field[hit[0].x][(hit[0].y-1)] == ' ':
+                    point = Dot(hit[0].x, hit[0].y - 1)
+                    return point
                 else:
-                    return [hit[0][0], (hit[len(hit)-1][1]+1)]
-            if hit[0][1] == hit[1][1]:
-                if board.field[(hit[0][0])-1][hit[0][1]] == ' ':
-                    return [(hit[0][0])-1, hit[0][1]]
+                    point = Dot(hit[0].x, hit[len(hit)-1].y + 1)
+                    return point
+            if hit[0].y == hit[1].y:
+                if board.field[(hit[0].x)-1][hit[0].y] == ' ':
+                    point = Dot(hit[0].x - 1, hit[0].y)
+                    return point
                 else:
-                    return [(hit[len(hit)-1][0]+1), hit[0][1]]
+                    point = Dot(hit[len(hit)-1].x + 1, hit[0].y)
+                    return point
         if message == 'Введите координаты выстрела':
             max_len = 1
-            for i in board_u.ships:
+            for i in self.conter_board.ships:
                 if i.lives > max_len:
                     max_len = i.lives
             if max_len > 1:
-                choise = []
-                d_choise = []
-                for i in free:
-                    count_h = 1
-                    count_v = 1
-                    #if i[0] < (len(board.field) - max_len + 1):
-                    try:
-                        for j in range(-1, (-max_len), -1):
-                            if board.field[i[0]+j][i[1]] == ' ':
-                                count_h += 1
-                            else:
-                                break
-                        for j in range (1, max_len):
-                            if board.field[i[0]+j][i[1]] == ' ':
-                                count_h += 1
-                            else:
-                                break
-                    except IndexError:
-                        pass
-                    #if i[1] < (len(board.field) - max_len + 1):
-                    try:
-                        for j in range(-1, (-max_len), -1):
-                            if board.field[i[0]][i[1]+j] == ' ':
-                                count_v += 1
-                            else:
-                                break
-                        for j in range(1, max_len):
-                            if board.field[i[0]][i[1]+j] == ' ':
-                                count_v += 1
-                            else:
-                                break
-                    except IndexError:
-                        pass
-                    if count_h >= max_len or count_v >= max_len:
-                        choise.append(i)
-                    if count_h >= max_len and count_v >= max_len:
-                        d_choise.append(i)
-                if d_choise != []:
-                    x, y = (d_choise[random.randint(0, len(d_choise)-1)])
-                    return [x, y]
-                x, y = (choise[random.randint(0, len(choise)-1)])
-                return [x, y]
-        x, y = (free[random.randint(0, len(free)-1)])
-        return [x, y]
+                choise = board.search_and_destroy(max_len)
+                point = (choise[random.randint(0, len(choise)-1)])
+                return point
+        point = (free[random.randint(0, len(free)-1)])
+        return point
 
 class Game:
     def __init__(self, user, board_u, ai, board_c):
@@ -435,12 +473,11 @@ class Game:
         board_c_vis.output()
 
     def loop(self):
-        success = False
-        while not success:
+        while True:
             first = input('Чей ход первый? u - пользователь, c - компьютер')
             first.lower()
             if first == 'u' or first == 'c':
-                success = True
+                break
         self.status()
         while self.board_user.lships > 0 and self.board_comp.lships > 0:
             if first == 'u':
@@ -455,24 +492,24 @@ class Game:
                 print('Выстрел компьютера!')
                 turn = self.comp.move()
                 self.status()
-                time.sleep(2)
+                time.sleep(1)
                 while turn and self.board_user.lships > 0:
                     print('Выстрел компьютера!')
                     turn = self.comp.move()
                     self.status()
-                    time.sleep(2)
+                    time.sleep(1)
                 if self.board_user.lships == 0:
                     print('Компьютер выиграл!')
             if first == 'c':
                 print('Выстрел компьютера!')
                 turn = self.comp.move()
                 self.status()
-                time.sleep(2)
+                time.sleep(1)
                 while turn and self.board_user.lships > 0:
                     print('Выстрел компьютера!')
                     turn = self.comp.move()
                     self.status()
-                    time.sleep(2)
+                    time.sleep(1)
                 if self.board_user.lships == 0:
                     print('Компьютер выиграл!')
                     break
@@ -485,13 +522,8 @@ class Game:
                     print('Пользователь выиграл!')
 
 
-def get_key(a:dict, value):
-    for i, j in a.items():
-        if j == value:
-            return i
-
-dict = {1:'A', 2:'B', 3:'C', 4:'D', 5:'E',
-        6:'F', 7:'G', 8:'H', 9:'I', 0:'J'}
+dict = {'A':1, 'B':2, 'C':3, 'D':4, 'E':5,
+        'F':6, 'G':7, 'H':8, 'I':9, 'J':10}
 
 battleship_u = Ship(4)
 battleship_c = Ship(4)
